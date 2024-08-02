@@ -11,23 +11,29 @@ import pdb
 
 #%%
 
-def atmosphere_topos(n_ifgs, dem_m, delay_grad = -0.0003, delay_var = 0.00005, zero_delay_h = 10000.):
+def atmosphere_topos(n_ifgs, dem_m, delay_grad = -0.0003, delay_var = 0.00005, 
+                     zero_delay_h = 10000.):
     """ Create multiple topographically correlated APS for each acquisition.  
-    Different to the function below that makes them for .    See function below that is called to make each one.  
+    Different to the function below that makes them for a single interferogram. 
+    
     Inputs:
         n_ifgs | int | Number of interferogram atmospheres to generate.   
-        delay_grad | float | absolute delay gradient.   Units are m delay / m height.  With -0.0003, ~3000m elevation required for 1m of delay.  
-        delay_var | float | variance of the delays.  Higher value gives more variety in atmospheres, so bigger interfergoram atmospheres.  
+        delay_grad | float | absolute delay gradient.   Units are m delay / m #
+                             height.  With -0.0003, ~3000m elevation required 
+                             for 1m of delay.  
+        delay_var | float | variance of the delays.  Higher value gives more 
+                            variety in atmospheres, so bigger interfergoram atmospheres.  
         zero_delay_h | float | Height at which delays tend to zero.  Not tested.  
     Returns:
         atm_topos | r3 ma | interferograms with mask applied.  
         
     History:
         2023_08_24 | MEG | Written
+        2024_07_31 | MEG | Update to return atmospheres on each acquisiton.  
         
         
     E.g. GACOS for vesuvius: Vesuvius 1281m high, 2.1m of delay.  
-                        sea level: (0m)         2.45
+                        sea level: (0m)         2.45m of delay
     """
     
     import numpy as np
@@ -36,8 +42,11 @@ def atmosphere_topos(n_ifgs, dem_m, delay_grad = -0.0003, delay_var = 0.00005, z
     
     
     # sanity check of how delay is defined.  
-    # grad_av =  (0 - 1281) / (2.45 - 2.1)                # height on the y axis, delay on the x (as per Bekaert 2015).  Makes sense as heiht is normally vertical.  
-    #  c = 10000                                       # height at which delays are 0, in m.  Also called zero_delay_height.  
+    # height on the y axis, delay on the x (as per Bekaert 2015).  
+    # Makes sense as heiht is normally vertical.  
+    # grad_av =  (0 - 1281) / (2.45 - 2.1)                
+    # height at which delays are 0, in m.  Also called zero_delay_height.  
+    #  c = 10000                                       
     # # heights = grad_av * delays + c
     # # heights - c / grad_av = delays
     # heights = np.arange(0, 10000, 1)
@@ -46,7 +55,7 @@ def atmosphere_topos(n_ifgs, dem_m, delay_grad = -0.0003, delay_var = 0.00005, z
     # ax.plot(delays, heights)
 
     
-    n_atms = n_ifgs + 1                                                                                                     # n_ifgs is 1 more than n_acqs or n_atms
+    n_atms = n_ifgs + 1                                                                                                     
     delay_grads = delay_grad + (delay_var * np.random.randn(n_atms))
         
     # # debug figure
@@ -57,21 +66,31 @@ def atmosphere_topos(n_ifgs, dem_m, delay_grad = -0.0003, delay_var = 0.00005, z
     # for delay_grad in delay_grads:
     #     delays = (heights - zero_delay_h) / (1 / delay_grad)
     #     ax.plot(delays, heights)
-        
-    for n_atm in range(n_atms):                                                                                 # loop through making atms.  Make n_acqs of them, which is 1 more than n_ifgs
+    
+    # # generate the delay.  
+    # loop through making atms.  Make n_acqs of them, which is 1 more than n_ifgs
+    for n_atm in range(n_atms):                                                                                 
         atm_topo = (dem_m - zero_delay_h) / (1/delay_grads[n_atm])
         #atm_topo = (dem_m) / (1/delay_grads[n_atm])
-        if n_atm == 0:                                                                                          # if the first time.
-            atm_topos = ma.zeros((n_atms, atm_topo.shape[0], atm_topo.shape[1]))                                # initialise array to store results
-        atm_topos[n_atm, :, :] = atm_topo                                                       # 
+        # if the first atmosphere, initialise array to store outputs.  
+        if n_atm == 0:                                                                                          
+            atm_topos = ma.zeros((n_atms, atm_topo.shape[0], atm_topo.shape[1]))                                
+        atm_topos[n_atm, :, :] = atm_topo                                                       
 
-    dem_minimum_arg = np.unravel_index(np.argmin(dem_m), dem_m.shape)                                           # find the lowest pixel in the DEM
-    atm_topo_offsets = atm_topos[:, dem_minimum_arg[0], dem_minimum_arg[1]]                                     # use this as a reference pixel for the atmoshperes.  
 
-    for atm_n, atm_topo in enumerate(atm_topos):                                                                # loop through the atmospheres
-        atm_topo -= atm_topo_offsets[atm_n]                                                                     # and reference them.  
+    
+    ## Reference the atmospheres 
+    # find the lowest pixel in the DEM
+    dem_minimum_arg = np.unravel_index(np.argmin(dem_m), dem_m.shape)                                           
+    # use this as a reference pixel for the atmoshperes.  
+    atm_topo_offsets = atm_topos[:, dem_minimum_arg[0], dem_minimum_arg[1]]                                     
+    # iterate through all atmospheres and set the reference pixel to 0
+    for atm_n, atm_topo in enumerate(atm_topos):                                                                
+        atm_topo -= atm_topo_offsets[atm_n]                                                                     
 
-    atm_topos_diff = ma.diff(atm_topos, axis = 0)                                                               # atmoshperes in ifgs are the difference of two atmospheres.  
+    # calculate the difference between the diasy chain of acquisitions 
+    # (i.e. shortest temporal baselines)
+    atm_topos_diff = ma.diff(atm_topos, axis = 0)                                                               
     
     # # debug figure
     # f, axes = plt.subplots(3,n_atm)
@@ -81,7 +100,7 @@ def atmosphere_topos(n_ifgs, dem_m, delay_grad = -0.0003, delay_var = 0.00005, z
     #     axes[1,i].matshow(atm_topos[i,], vmin = np.min(atm_topos), vmax =  np.max(atm_topos))
     #     axes[2,i].matshow(atm_topos_diff[i,], vmin = np.min(atm_topos_diff), vmax =  np.max(atm_topos_diff))
     
-    return atm_topos_diff
+    return atm_topos_diff, atm_topos
 
 #%%
     
@@ -108,7 +127,8 @@ def atmosphere_topo(dem_m, strength_mean = 56.0, strength_var = 2.0, difference 
 
     if difference is False:
         ph_topo = (strength_mean + strength_var * np.random.randn(1)) * dem
-        print(f"The use of this function with difference = False is discouraged.  Use atmosphere_topos instead (and not atmosphere_topo)")
+        print(f"The use of this function with difference = False is discouraged.  "
+              "Use atmosphere_topos instead (and not atmosphere_topo)")
     elif difference is True:
         ph_topo_aq1 = (strength_mean + strength_var * np.random.randn(1)) * dem                         # this is the delay for one acquisition
         ph_topo_aq2 = (strength_mean + strength_var * np.random.randn(1)) * dem                         # and for another
